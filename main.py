@@ -3,6 +3,7 @@ import networkx as nx
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import random, math, itertools, numpy as np
+from wordcloud import WordCloud, STOPWORDS
 
 @dataclass
 class Comment:
@@ -89,6 +90,48 @@ def filter_users(data:SocialData, attr_filter:dict|None):
             out.append(u)
     return out
 
+# post content filter for word cloud generation 
+def get_filtered_posts(data: SocialData,
+                       include_keywords:list[str]|None=None,
+                       exclude_keywords:list[str]|None=None,
+                       attr_filter:dict|None=None):
+    include = set(k.lower() for k in (include_keywords or []))
+    exclude = set(k.lower() for k in (exclude_keywords or []))
+
+    allowed_users = {u.user_id for u in filter_users(data, attr_filter)}
+    out = []
+    for p in data.posts.values():
+        if p.author_id not in allowed_users:
+            continue
+        content = p.content.lower()
+        if include and not any(kw in content for kw in include):
+            continue
+        if exclude and any(kw in content for kw in exclude):
+            continue
+        out.append(p)
+    return out
+
+# wordcloud 
+def generate_filtered_wordcloud(data: SocialData,
+                                include_keywords:list[str]|None=None,
+                                exclude_keywords:list[str]|None=None,
+                                attr_filter:dict|None=None,
+                                max_words:int=200,
+                                width:int=800, height:int=400,
+                                background_color:str="white"):
+    posts = get_filtered_posts(data, include_keywords, exclude_keywords, attr_filter)
+    if not posts:
+        print("No matching posts for the given filters.")
+        return
+    text = " ".join(p.content for p in posts)
+    wc = WordCloud(width=width, height=height, background_color=background_color,
+                   stopwords=STOPWORDS, max_words=max_words).generate(text)
+    plt.figure(figsize=(width/100, height/100))
+    plt.imshow(wc, interpolation="bilinear")
+    plt.axis("off")
+    plt.title("Filtered Word Cloud")
+    plt.tight_layout()
+    plt.show()
 
 def build_graph(data:SocialData, *, include_views=False, include_quotes=False,
                 users_subset=None, posts_subset=None):
@@ -199,3 +242,20 @@ visualize_social_graph(data,
                                       "metric":"views",
                                       "top_n":None},
                        include_views=False, layout_seed=42)
+
+# word cloud examples
+# 1. NA users, posts with "post", "check" and excluding "he"
+generate_filtered_wordcloud(
+    data,
+    include_keywords=["post", "check"],
+    exclude_keywords=["he"],
+    attr_filter={"region": "NA"}
+)
+# output: post, def
+
+# 2. female users
+generate_filtered_wordcloud(
+    data,
+    attr_filter={"gender": "female"}
+)
+# output: def, post, another, agree, important, p1
