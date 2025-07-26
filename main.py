@@ -227,6 +227,49 @@ def visualize_social_graph(data:SocialData,
     plt.tight_layout()
     plt.show()
 
+def compute_trending_score(post: Post, window_hours: int = 24, decay: float = 0.1):
+    """
+    Trending score based on number of recent views, weighted by recency.
+    More recent views have higher weight.
+    """
+    now = datetime.now()
+    score = 0.0
+    for user_id, seen_at in post.views:
+        age = (now - seen_at).total_seconds() / 3600.0
+        if age <= window_hours:
+            weight = math.exp(-decay * age)  # exponential decay by age
+            score += weight
+    return score
+
+def trending_posts_report(data: SocialData,
+                          window_hours: int = 24,
+                          top_n: int = 5,
+                          include_keywords: list[str] | None = None,
+                          exclude_keywords: list[str] | None = None,
+                          attr_filter: dict | None = None,
+                          decay: float = 0.1,
+                          show_wordcloud: bool = True):
+    """
+    Generate a trending post report based on view activity.
+    Filters posts by keywords and user attributes.
+    """
+    # Step 1: Filter posts by user attributes and keywords
+    posts = get_filtered_posts(data, include_keywords, exclude_keywords, attr_filter)
+    if not posts:
+        print("No matching posts found.")
+        return
+
+    # Step 2: Compute trending score
+    scored_posts = [(p, compute_trending_score(p, window_hours, decay)) for p in posts]
+    scored_posts.sort(key=lambda x: x[1], reverse=True)
+    top_posts = scored_posts[:top_n]
+
+    print(f"\n📈 Top {top_n} Trending Posts (last {window_hours}h):\n")
+    for rank, (p, score) in enumerate(top_posts, 1):
+        print(f"{rank}. Post ID: {p.post_id} | Author: {p.author_id} | Views: {len(p.views)} | Score: {score:.2f}")
+        print(f"   Content: {p.content}")
+        print(f"   Created At: {p.created_at.strftime('%Y-%m-%d %H:%M')}\n")
+
 
 
 # 1. Highlight important posts (blend of views+comments)
@@ -259,3 +302,20 @@ generate_filtered_wordcloud(
     attr_filter={"gender": "female"}
 )
 # output: def, post, another, agree, important, p1
+
+#trending posts globally
+trending_posts_report(data, window_hours=48, top_n=3)
+
+#trending posts from female users
+trending_posts_report(data,
+                      window_hours=48,
+                      top_n=3,
+                      attr_filter={"gender": "female"})
+
+#trending posts with keywords and excluding others
+trending_posts_report(data,
+                      include_keywords=["post", "important"],
+                      exclude_keywords=["he"],
+                      attr_filter={"region": "NA"},
+                      window_hours=36,
+                      top_n=5)
